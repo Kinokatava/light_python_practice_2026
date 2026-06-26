@@ -58,27 +58,33 @@ def sync_db(db_path: str, scanned_files: list) -> tuple:
     old_paths = {row[0] for row in cursor.fetchall()}
     
     new_paths = {f['relative_path'] for f in scanned_files}
-    
     paths_to_delete = old_paths - new_paths
 
     added = 0
     updated = 0
+    paths_to_hash = []
 
     for file in scanned_files:
-        cursor.execute("SELECT id FROM files WHERE relative_path = ?", (file['relative_path'],))
-        if cursor.fetchone():
-            cursor.execute("""
-                UPDATE files 
-                SET size=?, modified_at=?, file_type=? 
-                WHERE relative_path=?
-            """, (file['size'], file['modified_at'], file['file_type'], file['relative_path']))
-            updated += 1
+        cursor.execute("SELECT id, size, modified_at FROM files WHERE relative_path = ?", (file['relative_path'],))
+        row = cursor.fetchone()
+        
+        if row:
+            db_id, db_size, db_mtime = row
+            if file['size'] != db_size or abs(file['modified_at'] - db_mtime) > 1.0:
+                cursor.execute("""
+                    UPDATE files 
+                    SET size=?, modified_at=?, file_type=? 
+                    WHERE relative_path=?
+                """, (file['size'], file['modified_at'], file['file_type'], file['relative_path']))
+                updated += 1
+                paths_to_hash.append(file['relative_path'])
         else:
             cursor.execute("""
                 INSERT INTO files (relative_path, size, modified_at, file_type)
                 VALUES (?, ?, ?, ?)
             """, (file['relative_path'], file['size'], file['modified_at'], file['file_type']))
             added += 1
+            paths_to_hash.append(file['relative_path'])
 
     deleted = 0
     if paths_to_delete:
@@ -91,8 +97,7 @@ def sync_db(db_path: str, scanned_files: list) -> tuple:
     conn.commit()
     conn.close()
     
-    return added, updated, deleted
-
+    return added, updated, deleted, paths_to_hash
 
 def get_file_hash(file_path: str, algorithm: str = 'md5', chunk_size: int = 8192) -> str:
     hasher = hashlib.new(algorithm)

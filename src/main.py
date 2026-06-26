@@ -45,13 +45,13 @@ def main():
 
     # 1. Сканирование и синхронизация
     scanned_files = scanner.scan_directory(target_path, allowed_exts)
-    added, updated, deleted = db.sync_db(db_path, scanned_files)
+    added, updated, deleted, paths_to_hash = db.sync_db(db_path, scanned_files)
     print(f"Индекс источника обновлен: +{added} ~{updated} -{deleted}")
     
     # 2. Хеширование
     if args.find_dupes or args.backup:
         print("\nВычисление хэшей источника...")
-        hash_stats = hasher.process_files_for_hashes(target_path, db_path, scanned_files)
+        hash_stats = hasher.process_files_for_hashes(target_path, db_path, scanned_files, paths_to_hash)
         print(f"Хэши: посчитано: {hash_stats['calculated']}, взято из кэша: {hash_stats['reused']}")
 
     # 3. поиск дублей
@@ -74,7 +74,7 @@ def main():
             
         print(f"\nСравнение с резервной копией: '{backup_path}'...")
         
-        missing, modified, extra = backup.compare_with_backup(db_path, target_path, backup_path)
+        missing, modified, extra = backup.compare_with_backup(db_path, target_path, backup_path, allowed_exts)
         check_id = backup.save_backup_report(db_path, target_path, backup_path, missing, modified, extra)
         
         print(f"ID отчета: {check_id}")

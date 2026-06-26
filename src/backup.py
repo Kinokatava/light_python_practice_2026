@@ -2,7 +2,9 @@ import os
 import time
 import sqlite3
 import db
-def _scan_backup_recursive(current_path: str, root_path: str, backup_files: dict) -> None:
+import scanner
+
+def _scan_backup_recursive(current_path: str, root_path: str, backup_files: dict, allowed_exts: set = None) -> None:
     try:
         entries = os.listdir(current_path)
     except OSError:
@@ -16,8 +18,13 @@ def _scan_backup_recursive(current_path: str, root_path: str, backup_files: dict
         
         try:
             if os.path.isdir(abs_path):
-                _scan_backup_recursive(abs_path, root_path, backup_files)
+                _scan_backup_recursive(abs_path, root_path, backup_files, allowed_exts)
             else:
+                if allowed_exts:
+                    file_type = scanner.get_file_type(entry)
+                    if file_type not in allowed_exts:
+                        continue
+
                 rel_path = os.path.relpath(abs_path, root_path)
                 try:
                     backup_files[rel_path] = {
@@ -29,7 +36,7 @@ def _scan_backup_recursive(current_path: str, root_path: str, backup_files: dict
         except OSError:
             continue
 
-def compare_with_backup(db_path: str, source_path: str, backup_path: str) -> tuple:
+def compare_with_backup(db_path: str, source_path: str, backup_path: str, allowed_exts: set = None) -> tuple:
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute("SELECT relative_path, size, hash FROM files")
@@ -37,7 +44,7 @@ def compare_with_backup(db_path: str, source_path: str, backup_path: str) -> tup
     conn.close()
     
     backup_files = {}
-    _scan_backup_recursive(backup_path, backup_path, backup_files)
+    _scan_backup_recursive(backup_path, backup_path, backup_files, allowed_exts)
                 
     source_paths = set(source_files.keys())
     backup_paths = set(backup_files.keys())
